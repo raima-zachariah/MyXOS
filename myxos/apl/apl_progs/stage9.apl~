@@ -1,0 +1,15 @@
+decl
+	integer pid;
+enddecl
+
+integer main()
+{
+//print("Before Fork");
+pid = Fork();
+if (pid == -2) then
+	pid = Exec ("a1.dat");
+endif;
+//print("After Fork");
+
+return 0;
+}

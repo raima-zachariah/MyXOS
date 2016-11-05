@@ -1,0 +1,28 @@
+decl
+	integer n;
+	integer i;
+	integer flag;
+enddecl
+integer main(){
+	print("hello");
+	print("Enter n");
+	read(n);
+	i=2;
+	flag = 0;
+	while i <= n/2 do
+		if(n % i == 0) then
+			flag = 1;
+			break;
+		endif;
+		i = i + 1;
+	endwhile;
+	if ( flag == 1 ) then
+		print("not prime");
+	else
+		print("prime");
+	endif;
+	return 0;
+
+}
+
+	
