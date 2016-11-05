@@ -1,10 +1,10 @@
-DIRS = apl spl xfs-interface xsm
+all:	spl
+lex.yy.c:	spl.l
+		lex spl.l
 
-all:
-	set -e; for d in $(DIRS); do $(MAKE) -C $$d ; done
-
+y.tab.c:	spl.y spl.h	
+		yacc -d spl.y
+spl:		lex.yy.c y.tab.c	
+		gcc lex.yy.c y.tab.c -lfl -o spl
 clean:
-	@cd apl && make clean
-	@cd spl && make clean
-	@cd xfs-interface && make clean
-	@cd xsm && make clean
+	rm -rf spl *~ y.* lex.*

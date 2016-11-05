@@ -1,0 +1,141 @@
+alias physicalSP S0;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+alias sysCallNo S1;
+sysCallNo = [physicalSP - 1];
+
+alias PID S2;
+PID = (PTBR - 1024) / 8;
+
+alias count S5;
+
+
+if (sysCallNo == 8) then
+	//find free PCB for the child
+	alias newPID S3;
+	newPID = 0;
+	while( newPID < 32 ) do
+		if ( [READY_LIST + newPID * 32 + 1] == 0 ) then //freePCB= state 0
+			break;
+		endif;
+		newPID = newPID + 1;
+	endwhile;
+
+	//when no free PCB is found
+	if ( newPID == 32 ) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+
+	//set the PID of the child process
+	[READY_LIST + newPID * 32 ] = newPID;
+	
+	alias childPTBR S7;
+	chilePTBR = 1024 + newPID * 8;
+
+	alias newStackLocation S4;
+	count = 0;
+
+	while(count<64) do
+		if ([MEM_LIST + count] == 0 ) then
+			newStackLocation = count;
+			[MEM_LIST + count] = 1;
+			break;
+		endif;
+		count= count + 1;
+	endwhile;
+	
+	if ( count == 64) then
+		[physicalSP -2] = -1;
+		ireturn;
+	endif;
+	
+	alias  wordIndex S6;
+	// copy the stack of the parent to the child word by word
+	
+	wordIndex = 0;
+	while (wordIndex < 512) do
+		[newStackLocation * 512 + wordIndex] = [[PTBR + 6] * 512 + wordIndex];
+		wordIndex = wordIndex + 1;
+	endwhile;
+	
+	// set fourth entry of child's PTBR as stack
+	[childPTBR + 6] = newStackLocation;
+	[childPTBR + 7] = "01";	
+	
+	
+
+        // update other entries of child's PTBR
+	
+	count = 0;
+	 
+       
+	while (count < 3) do
+	
+		// copy the entries in the page table of parent's process to that of child's process
+		
+		[childPTBR + count * 2] = [PTBR + count * 2];
+		[childPTBR + count * 2 + 1] = [PTBR + count * 2 + 1];
+		
+		// inc the entry in MFL by 1 if valid code page, indicating that page is shared by more than one process
+		
+		if ([PTBR + count * 2 + 1] == "01" || [PTBR + count * 2 + 1] == "11") then
+			[MEM_LIST + [PTBR + count * 2]] = [MEM_LIST + [PTBR + count * 2]] + 1;
+		endif;
+		
+		if ([PTBR + count * 2 + 1] == "00" && [PTBR + count * 2] >= 448) then
+			// indicates that code page resides in the disk in the swap area at this block number, swap block is shared.
+			[DISK_LIST + [PTBR + count * 2]] = [DISK_LIST + [PTBR + count * 2]] + 1;
+			
+			store(6, 20);
+		endif;
+		
+		count = count + 1;
+		
+	endwhile;
+	
+
+	[READY_LIST + newPID * 32 + 2] = BP; //set BP
+	[READY_LIST + newPID * 32 + 3] = SP - 1;  //set SP
+	[READY_LIST + newPID * 32 + 4] = [physicalSP]; //set IP
+
+	[READY_LIST + newPID * 32 + 5] = childPTBR;  //set the PTBR_child
+	[READY_LIST + newPID * 32 + 6] = 4;  //set PTLR
+
+	//the current reg values are copied to PCB	
+	[READY_LIST + newPID * 32 + 7] = R0;
+	[READY_LIST + newPID * 32 + 8] = R1;
+	[READY_LIST + newPID * 32 + 9] = R2;
+	[READY_LIST + newPID * 32 + 10] = R3;
+	[READY_LIST + newPID * 32 + 11] = R4;
+	[READY_LIST + newPID * 32 + 12] = R5;
+	[READY_LIST + newPID * 32 + 13] = R6;
+	[READY_LIST + newPID * 32 + 14] = R7;
+
+
+	count = 0;
+	while ( count < 8 ) do
+		[READY_LIST + newPID * 32 + 15 + count * 2] =[READY_LIST + PID * 32 + 15 + count * 2];
+		[READY_LIST + newPID * 32 + 15 + count * 2 + 1] = [READY_LIST + PID * 32 + 15 + count * 2 + 1];
+		[FILE_TABLE + [READY_LIST + PID * 32 + 15 + count * 2] * 2 + 1] = [FILE_TABLE + [READY_LIST + PID * 32 + 15 + count * 2] * 2 + 1] + 1;        //inc FILE OPEN COUNT
+		count = count + 1;
+	endwhile;	
+	
+
+	[READY_LIST + newPID * 32 + 1] = 1; //set the state field as READY
+	[physicalSP - 2] = newPID; //return the PID of child process
+	alias childPhysicalSP S9;
+	childPhysicalSP = ([childPTBR + 2 * ((SP - 1) / 512)] * 512) + ((SP - 1) % 512);
+	[childPhysicalSP - 1] = -2;
+	  //The value -2 is stored in the return value space of the stack of the child process.
+	ireturn;
+	
+endif;	
+			
+	
+		
+	
+	
+	
+
+	

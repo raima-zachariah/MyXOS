@@ -1,0 +1,67 @@
+alias physicalSP S0;
+physicalSP= ([PTBR + 2* (SP/512)] *512) + (SP%512);
+alias syscallno S1;
+syscallno= [physicalSP-1];
+alias arg2 S2;
+arg2= [physicalSP-3];
+alias arg1 S3;
+arg1=[physicalSP-4];
+if (syscallno ==5) then
+	if( arg1 <0 || arg1>7) then
+		[physicalSP-2]= -1;
+		ireturn;
+	endif;
+	alias swoft S4;
+	alias lseek S5;
+	alias PCB S6;
+	PCB = READY_LIST + 32* ( (PTBR-1024)/8);
+	swoft = [PCB + 15 + 2*arg1];
+	lseek = [PCB + 15 + 2*arg1 + 1];
+	if ( swoft == -1) then
+		[physicalSP-2]= -1;
+		ireturn;
+	endif;
+	alias fatindex S7;
+	fatindex = [ FILE_TABLE + 2*swoft];
+	alias basicblk S8;
+	basicblk= [FAT + 8*fatindex + 2];
+	load(1,basicblk);
+	alias index S9;
+	index = lseek/512;
+	if ( [512+index] == -1) then
+		alias i S10;
+		i=23;
+		while( i< 448) do
+			if( [6*512 + i] == 0) then
+				break;
+			endif;
+			i = i+1;
+		endwhile;
+		if( i == 448) then
+			[physicalSP-2]= -1;
+			ireturn;
+		endif;
+		[6*512 + i] = 1;
+		[512 + index] = i;
+		store(1,basicblk);
+		[FAT + 8*fatindex +1] = [FAT + 8*fatindex + 1] + 512;
+		//print("hi1");
+		store(5,19);
+		//print("hi2");
+		store(6,20);
+	endif;
+	alias datablk S12;
+	datablk= [512+index];
+	load(1, datablk);
+	alias offset S11;
+	offset = lseek%512;
+	[512 + offset] = arg2;
+	//print("hi3");
+	store(1, datablk);
+	//print("hi4");
+	[PCB + 15 + 2*arg1 +1 ] = [PCB + 15+ 2*arg1 + 1] +1 ;
+	[physicalSP-2]= 0;
+	ireturn;
+endif;
+	
+		

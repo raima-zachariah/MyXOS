@@ -1,0 +1,210 @@
+print "in int5";
+ alias physicalSP S0;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+alias sysCallNo S1;
+sysCallNo = [physicalSP-1];
+
+alias arg1 S2;
+arg1 = [physicalSP-3];
+
+alias counter S3;
+counter = 1;
+
+alias offset S4;
+offset = 0;
+
+alias flag S5;
+flag = 0;
+
+alias PID S8;
+
+alias index S6;
+index = 1;
+
+alias first S12;
+alias second S13;
+alias third S14;
+alias fourth S15;
+alias currentPID S10;
+currentPID = (PTBR - 1024) / 8;
+//step 1 & 2
+counter = 0;
+if(sysCallNo == 8 ) then
+while(counter < 32) do
+     if([READY_LIST + index] == 0)then
+     	flag = 1;
+        break;
+     index = index + 32;
+     counter = counter + 1;
+     endif;
+endwhile;
+// counter contains the PID
+if(flag == 0) then
+    [physicalSP-2] = -1;
+    ireturn;
+endif;
+//step 3
+[READY_LIST + 32 * counter + 0] = counter;
+PID = counter;
+//step 4.1
+counter = 0;
+if( [PTBR + 1] == "01" || [PTBR + 1] == "11")
+	then counter = counter + 1;
+endif;
+if( [PTBR + 3] == "01" || [PTBR + 3] == "11" )
+	then counter = counter + 1;
+endif;
+if( [PTBR + 5] == "01" || [PTBR + 5] == "11" )
+	then counter = counter + 1;
+endif;
+if( [PTBR + 7] == "01" || [PTBR + 7] == "11" )
+	then counter = counter + 1;
+endif;
+offset = counter;
+flag = 0;
+index = 29;
+
+while(index < 64) do
+    if([ MEM_LIST + index ] == 0) then	
+	counter = counter - 1;
+    endif;
+    if(counter == 0) then
+    	flag = 1;
+    break;
+    endif;
+    index = index + 1;
+endwhile;
+
+if(flag == 0) then
+    [physicalSP-2] = -1;
+    ireturn;
+endif;
+
+first = -1;
+second = -1;
+third = -1;
+fourth = -1;
+//step 4.2
+index = 29;
+counter = 0;
+while(index < 64) do
+    if([ MEM_LIST + index ] == 0) then
+    	[ MEM_LIST + index ] = 1;
+	counter = counter + 1;
+    endif;
+    
+    if(counter == 1) then
+    	first = index;
+    endif;
+    if(counter == 2) then
+    	second = index;
+    endif;
+    if(counter == 3) then
+    	third = index;
+    endif;
+    if(counter == 4) then
+    	fourth = index;
+    endif;
+    if(counter == offset) then
+    break;
+    endif;
+    index = index + 1;
+endwhile;
+// step 4.3
+flag = 0;
+if( [PTBR + 1] == "01" || [PTBR + 1] == "11") then
+    offset = [PTBR + 0];
+    while(flag < 512) do
+        [first * 512 + flag] = [offset * 512 + flag];
+    flag = flag + 1;
+    endwhile;
+endif;
+
+flag = 0;
+if( [PTBR + 3] == "01" || [PTBR + 3] == "11") then
+    offset = [PTBR + 2];
+    while(flag < 512) do
+        [second * 512 + flag] = [offset * 512 + flag];
+    flag = flag + 1;
+    endwhile;
+endif;
+
+flag = 0;
+if( [PTBR + 5] == "01" || [PTBR + 5] == "11") then
+    offset = [PTBR + 4];
+    while(flag < 512) do
+        [third * 512 + flag] = [offset * 512 + flag];
+    flag = flag + 1;
+    endwhile;
+
+endif;
+
+flag = 0;
+if( [PTBR + 7] == "01" || [PTBR + 7] == "11") then
+    offset = [PTBR + 6];
+    while(flag < 512) do
+        [fourth * 512 + flag] = [offset * 512 + flag];
+    flag = flag + 1;
+    endwhile;
+
+endif;
+
+alias PTBR_child S7;
+PTBR_child = 1024 + 8 * PID; 
+[PTBR_child + 0] = first;
+[PTBR_child + 1] = [PTBR + 1];
+[PTBR_child + 2] = second;
+[PTBR_child + 3] = [PTBR + 3];
+[PTBR_child + 4] = third;
+[PTBR_child + 5] = [PTBR + 5];
+[PTBR_child + 6] = fourth;
+[PTBR_child + 7] = [PTBR + 7];
+
+alias PCB S9;
+PCB = READY_LIST + 32 * PID;
+
+//step 5
+[PCB + 5 ] = PTBR_child;
+//step 6
+[PCB + 4 ] = [physicalSP];
+//step 7
+[PCB + 3 ] = SP - 1;
+//step 8
+[PCB + 2 ] = BP;
+[PCB + 6 ] = PTLR;
+[PCB + 7 ] = R0; 
+[PCB + 8 ] = R1;
+[PCB + 9 ] = R2;
+[PCB + 10] = R3;
+[PCB + 11] = R4;
+[PCB + 12] = R5;
+[PCB + 13] = R6;
+[PCB + 14] = R7;
+//step 9
+counter = 15;
+while(counter <= 30) do
+    [PCB + counter] =  [READY_LIST + 32 * currentPID + counter];
+    counter = counter + 1;
+endwhile; 
+
+counter = 15;
+while(counter <= 30) do
+offset = [PCB + counter];
+     if(offset != -1) then
+     [FILE_TABLE + 2 * offset + 1] = [FILE_TABLE + 2 * offset + 1] + 1;
+     endif;
+counter = counter + 2;
+endwhile;
+//step 10
+[PCB + 1 ] = 1;
+//step 11
+[physicalSP-2] = PID;
+alias childSP S11;
+childSP = [ PCB + 3 ];
+physicalSP = ([PTBR_child + 2 * (childSP / 512)] * 512) + (childSP % 512);
+
+[physicalSP - 1] = -2;
+//print "end of int5";
+ireturn;
+endif;

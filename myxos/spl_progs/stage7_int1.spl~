@@ -1,0 +1,231 @@
+// Since interrupt routines execute in kernel mode, you will need to calculate the physical address of SP using the formula described in  Stage 6
+  
+  alias physicalSP S0;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+// Get system call no. from the stack and put it in a register
+
+
+alias sysCallNo S1;
+sysCallNo = [physicalSP-1];
+
+// Get arguments from stack and put it in registers
+
+alias arg1 S2;
+arg1 = [physicalSP-3]; //filename
+
+alias counter S3;
+counter = 1;
+
+alias offset S4;
+offset = 0;
+
+alias flag S5;
+flag = 0;
+
+alias DFL S6;
+DFL = 6*512 + 23; //0-23 is used up already
+
+alias index S7;
+index = 0;
+
+alias basic_block S8;
+
+alias datablock S9;
+//First of all, the memory copy of the FAT is to be searched with this filename to check if a file with the same name already exists.
+//print "I am before the system call";
+//print (sysCallNo);
+if( sysCallNo == 1) then
+   
+	//create()
+
+	while(counter <= 64) do
+	if ( [FAT + offset] == arg1 ) then
+	flag = 1;
+	break;
+	else
+	counter = counter + 1;
+	offset = offset + 8;
+	endif;
+	endwhile;
+
+
+// If it exists, return from the system call with 0, indicating success. 
+//print "hi2";
+if(flag==1) then
+[ physicalSP-2 ] = 0;
+ireturn;
+endif;
+
+//If the file does not already exist, a file with this filename is to be created. To do this, the memory copy of the disk free list (loaded to page 6 by the OS Startup Code) is searched till block number 447 to find a free block. 
+
+counter = 0;
+if(flag == 0) then
+	while(counter < 424) do
+	if ( [DFL] == 0) then
+	flag = 1;
+	break;
+	else
+	DFL = DFL + 1;
+	counter = counter + 1;
+	endif;
+	endwhile;
+endif;
+
+//If no free block is found, return from the system call with return value -1, indicating failure. 
+
+//print "hi3";
+if(flag==0) then
+[ physicalSP-2 ] = -1;
+ireturn;
+endif;
+
+
+//Next, the memory copy of the FAT is searched for a free entry. A free entry in the FAT is indicated by -1 in the entry for basic block (word 2 of each FAT entry).
+if(flag == 1) then
+	offset = 2;
+	while(counter <= 64) do
+	if ( [FAT + offset] == -1 ) then
+	flag = 0;
+	break;
+	else
+	counter = counter + 1;
+	offset = offset + 8;
+	endif;
+	endwhile;
+endif;
+
+//If no free entry is found, return with -1, indicating failure.
+//print "hi4";
+if(flag == 1) then
+[ physicalSP-2 ] = -1;
+ireturn;
+endif;
+
+[FAT + offset-2] = arg1;  
+
+[FAT + offset-1] = 0; 
+[FAT + offset] = DFL-3072;
+// Load the basic block of the file from the disk to the scratchpad.
+load (1,DFL-3072);
+//print "hi5";
+
+//All the words in the basic block loaded to the scratchpad must be set to -1. 
+counter = 512;
+while(counter <= 767) do
+[ counter ] = -1;
+counter = counter + 1;
+endwhile;
+
+//print "hi6";
+ //the basic block residing in the scratchpad needs to be stored back to the disk.
+store (1,DFL-3072);
+
+//The entry in the Disk Free List for the basic block is set to 1, indicating that it has now been allocated.
+[DFL]=1;
+
+//The updated copies of FAT and Disk Free List in the memory are then stored back to the disk.
+store(5,19);
+store(6,20);
+
+//Return from the system call with return value 0, indicating success
+[physicalSP - 2] = 0;
+//print "hi7";
+ireturn;
+
+endif;
+counter = 0;
+flag=0;
+offset = 0;
+if( sysCallNo == 4) then
+	
+	// delete();
+
+	counter =0;
+	offset = 0;
+	while(counter < 64) do
+	if ( [FAT + offset] == arg1 ) then    //check if filename is present in FAT
+	flag = 1;
+	break;
+	
+	else
+	counter = counter + 1;
+	offset = offset + 8;
+	endif;
+	endwhile;
+	
+if(flag==0) then
+[ physicalSP-2 ] = -1;
+ireturn;
+endif;
+index = counter;
+counter = 0;
+flag = 0;
+
+
+//check for any open files
+while ( counter <  128) do	
+	if([ FILE_TABLE + counter + 0] == index ) then	
+	flag = 1;
+	break;
+	endif;
+	counter = counter + 2;	
+endwhile;
+
+
+if(flag == 1) then
+[ physicalSP-2 ] = -1;
+ireturn;
+endif;
+
+//print "hello3";
+basic_block = [FAT + offset + 2];
+
+
+//print (basic_block);
+load(1,basic_block);
+datablock = 512;
+while (([datablock] != -1) && (datablock < 1024)) do
+
+load(1,[datablock]);
+counter = 0;
+while(counter < 512) do
+[counter + 512] = "";
+counter = counter + 1;
+endwhile;
+
+
+store(1,[datablock]);
+[ 3072 + [datablock] ] = 0;
+datablock = datablock + 1;
+endwhile;
+
+store(1,basic_block);
+
+load(1,basic_block);
+counter = 512;
+
+while(counter < 1024) do
+[counter] = "";
+counter = counter + 1;
+endwhile;
+
+store(1,basic_block);
+
+//print "hello4";
+[ 3072 + basic_block ] = 0;
+
+
+
+[FAT + offset + 1] = 0;
+[FAT + offset + 2] = -1;
+[FAT + offset ] = -1;
+
+//print "hello5";
+store(5,19);
+store(6,20);
+
+[physicalSP - 2] = 0;
+//print "hello";
+ireturn;
+endif;

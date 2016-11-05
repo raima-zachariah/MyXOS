@@ -1,0 +1,144 @@
+
+load(7, 1);  //exhandler
+load(8, 2);
+
+//int 7
+load(23, 17);
+load(24, 18);
+
+// allocate PID of first process which is INIT
+
+[READY_LIST + 0] = 0;
+
+PTBR = 1024;
+PTLR = 4;	// by default
+
+[PTBR + 0] = 21;
+[PTBR + 1] = "00";	// not referenced and not valid
+[PTBR + 2] = 22;
+[PTBR + 3] = "00";
+[PTBR + 4] = 23;
+[PTBR + 5] = "00";
+[PTBR + 6] = 25;	// memory for stack
+[PTBR + 7] = "01";
+
+
+// set the entries of the System-Wide Open File Table to invalid
+// an invalid entry is indicated by -1 in the FAT Index field
+// and File Open Counts to zero
+// FILE_TABLE stores the address of the System Wide Open File Table
+
+alias counter S0;			
+counter = 0;
+while ( counter <  128) do			// 64 entries, each of size 2 words
+	[FILE_TABLE + counter + 0] = -1;	// Set FAT Index to -1
+	[FILE_TABLE + counter + 1] =  0;	// Set File Open Count to 0
+	counter = counter + 2;			// Move to next entry
+endwhile;
+
+// set the per-process open file table entries of the INIT process to invalid
+
+counter = 0;
+
+while (counter < 16) do
+
+	[READY_LIST + 15 + counter] = -1;
+	counter = counter + 2;
+	
+endwhile;
+
+// the value of SP must be set to its starting logical address,
+// which starts form the 3 * 512 = 1536)
+
+SP = 3 * 512;
+[25 * 512] = 0;
+
+load(11, 5); //int1
+load(12, 6);
+
+load(9, 3);//timer
+load(10, 4);
+
+load(13, 7); //int2
+load(14, 8);
+
+// interrupt routine 3
+load(15, 9);
+load(16, 10);
+
+// interrupt routine 4
+load(17, 11);
+load(18, 12);
+
+// interrupt routine 5
+load(19, 13);
+load(20, 14);
+
+// interrupt routine 6
+load(21, 15);
+load(22, 16);
+
+// load the FAT
+load(5, 19);
+
+// load the Disk Free List
+load(6, 20);
+
+// assign values to Memory Free List
+
+counter = 0;
+while (counter < 26) do
+	// pages till 24 system reserved
+	// then 25 is used for stack by INIT
+	[MEM_LIST + counter] = 1;	// set as used
+	counter = counter + 1;
+endwhile;
+while (counter < 64) do
+	// set as available
+	[MEM_LIST + counter] = 0;
+	counter = counter + 1;
+endwhile;
+
+// clear memory copy of disk free list from 448 to 511
+// this is the swap area
+
+counter = 448;
+while (counter < 512) do
+	[DISK_LIST + counter] = 0;
+	counter = counter + 1;
+endwhile;
+
+// commit the memory copy of disk free list back into memory
+store(6, 20);
+
+// initialize all PCBs with STATE field zero
+alias PPOFTIndex S1; // to initialize entries in PPOFT to -1
+
+
+counter = 0;
+while (counter < 32) do
+	// 32 because there can be 32 processes in memory
+	[READY_LIST + counter * 32 + 1] = 0;
+	PPOFTIndex = 0;
+	while (PPOFTIndex < 8) do
+		[READY_LIST + counter * 32 + 15 + PPOFTIndex * 2] = -1;
+		[READY_LIST + counter * 32 + 15 + PPOFTIndex * 2 + 1] = -1;
+		PPOFTIndex = PPOFTIndex + 1;
+	endwhile;
+	counter = counter + 1;
+endwhile;
+
+
+
+// when there are more than one process in memory, the running process is
+// identified by looking at the STATE field in the Ready List of PCBs
+// this fact will come in use later
+
+[READY_LIST + 1] = 2; // set the PCB entry of INIT for STATE as running
+[READY_LIST + 31] = 0;	// set the parent of INIT as itself
+
+// use ireturn to transfer control to user program
+// ireturn translates to IRET machine instruction
+
+ireturn;
+

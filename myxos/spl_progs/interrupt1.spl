@@ -1,0 +1,87 @@
+ print "in int 1";
+
+alias physicalSP S0;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+alias sysCallNo S1;
+sysCallNo = [physicalSP - 1];
+
+alias fileName S2;
+fileName = [physicalSP - 3];
+
+if( sysCallNo == 1 ) then		//create()
+	alias i S3;
+	i=0;
+
+	while( i < 64 )	do	//64 FAT entries
+		if( [FAT + i*8] == fileName ) then
+			[physicalSP - 2] = 0;
+			ireturn;
+		else
+			i = i+1;
+		endif;
+	endwhile;
+
+	i=23;
+	alias flag S4;
+	alias basicBlock S5;
+	flag = 0;
+	while( i<448 ) do	//447 df list blocks
+		if( [DISK_LIST + i] == 0 ) then
+			flag = 1;
+			basicBlock = i;
+			break;
+		else
+			i = i+1;
+		endif;
+	endwhile;
+
+
+	print(basicBlock);
+
+
+	if(flag == 0) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif; 	
+
+	i=0;
+	flag = 0;
+	while( i < 64 )	do	//64 FAT entries .check basic blocks
+		if( [FAT + i*8 + 2] == -1 ) then
+			flag = 1;
+			[FAT + i*8] = fileName;
+			[FAT + i*8 + 1] = 0;
+			[FAT + i*8 + 2] = basicBlock+1;
+			break;
+		else
+			i = i+1;
+		endif;
+	endwhile;
+
+	if(flag == 0) then
+		[physicalSP -2] = -1;
+		ireturn;
+	endif;
+
+	alias dataBlockEntry S6;
+	dataBlockEntry = 0;
+	while (dataBlockEntry < 256) do
+		[SCRATCHPAD + dataBlockEntry] = -1;
+		dataBlockEntry = dataBlockEntry + 1;		
+	endwhile;
+
+	store(1,basicBlock);
+	[FAT + 512 + basicBlock] = 1;
+	
+	store(5, 19);	// store the FAT
+	store(6, 20);	// store the Disk Free List
+	
+	[physicalSP - 2] = 0;    ////RETUEN 0 FOR SUCCESS
+	ireturn;
+
+endif;
+
+
+
+

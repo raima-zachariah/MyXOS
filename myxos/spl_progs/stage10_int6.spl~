@@ -1,0 +1,149 @@
+alias physicalSP S0;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+alias sysCallNo S1;
+sysCallNo = [physicalSP - 1];
+
+alias fileName S2;
+fileName = [physicalSP - 3];	
+
+alias PID S3;
+PID = (PTBR - 1024 )/8;
+
+alias currentPCB S4;
+currentPCB = READY_LIST + 32 * PID;
+
+alias count S7;
+
+alias FATidx S5;
+FATidx = 0;
+		
+if ( sysCallNo == 9 ) then
+	//check for the fileName in the memory copy of FAT
+	
+	while (FATidx < 64 ) do
+		if ( [FAT + FATidx * 8] == fileName) then
+			break;
+		endif;
+		FATidx = FATidx + 1;
+	endwhile;
+	
+	//return -1 if the filename isnt found
+	if ( FATidx == 64 ) then	
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+
+	// on finding the FAT entry, fetch the basic block and place it in the scrtchpad to find data block
+	load(1, [FAT + FATidx * 8 + 2]);
+
+	//count the number of code blocks excluding the stack pg
+	alias countCB S6;
+	countCB = 0;
+	count = 0;
+
+	while (count < 256) do
+		if([SCRATCHPAD + count] > 0 && [SCRATCHPAD + count]<512) then
+			countCB = countCB + 1;
+		endif;
+		count = count + 1;	
+	endwhile;
+	if(countCB > 3 ) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+
+	//count the no of vaild pages in the parent process
+	alias countOld S8;
+	countOld = 0;
+	count = 0;
+	while ( count < 3) do
+		if ( [PTBR + count * 2 + 1] == "01" || [PTBR + count * 2 + 1] == "11") then
+			countOld = countOld + 1;
+		endif;
+		count = count + 1;
+	endwhile;
+	
+	// if countOld > countCB then deallocate the pages by setting mem free list entry to 0
+	if(countOld > countCB) then
+		while ( countOld != countCB ) do
+			countOld = countOld - 1;
+			[PTBR + countOld * 2 + 1] = "00";
+			[PTBR + countOld * 2] = -1;
+		endwhile;
+	endif;
+
+	if ( countOld < countCB ) then
+		alias newPageCount S9;
+		newPageCount = countCB - countOld;
+		count = 0;
+		while ( count < 64 && newPageCount > 0 ) do
+			if ( [MEM_LIST + count] == 0) then
+				newPageCount = newPageCount -1;
+			endif;
+			count = count + 1;
+		endwhile;
+		if ( count == 64 ) then
+			[physicalSP - 2] = -1;
+			ireturn;
+		endif;
+		
+		newPageCount = countCB - countOld;
+		count = 0;
+		while ( count < 64 && newPageCount > 0 ) do
+			if ([MEM_LIST + count] != 0 ) then
+				count = count + 1;
+				continue;
+			endif;
+			[MEM_LIST + count] = 1;
+			[PTBR + (countCB - newPageCount) * 2] = count;
+			[PTBR + (countCB - newPageCount) * 2 + 1] ="01" ;
+			newPageCount = newPageCount - 1;
+			count = count + 1;
+		endwhile;
+
+	endif;
+
+	//load the files from disk to mem
+	count = 0;
+	while ( count < countCB ) do
+		load ([PTBR + count * 2], [SCRATCHPAD + count]);
+		count = count + 1;
+	endwhile;
+	
+	//close all the files opened by the current process
+	count = 0;
+	while ( count < 8 ) do
+		if([currentPCB + 15 + count * 2] != -1 ) then
+			[FILE_TABLE + [currentPCB + 15 + count * 2]*2 + 1] = [FILE_TABLE + [currentPCB + 15 + count * 2]*2 + 1] - 1;   //dec FOC
+			if ( [FILE_TABLE + [currentPCB + 15 + count * 2]*2 + 1] == 0 ) then   //if FOC == 0 then invalidate the PPOFT
+				[FILE_TABLE + [currentPCB + 15 + count * 2]*2 + 1] = -1;
+			endif;
+	
+			[currentPCB + 15 + count * 2] = -1;
+			[currentPCB + 15 + count * 2 + 1] = -1;	
+		endif;
+		count = count + 1;
+	
+	endwhile;
+	
+	//reset SP 
+	SP = 3 * 512 ;
+	physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+	[physicalSP] = 0;
+	ireturn;
+endif;
+
+
+	
+		
+		
+			
+	
+			
+	
+	
+	
+
+	
+	

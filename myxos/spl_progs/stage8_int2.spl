@@ -1,0 +1,169 @@
+// Since interrupt routines execute in kernel mode, you will need to calculate the physical address of SP using the formula described in  Stage 6
+  
+  alias physicalSP S0;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+// Get system call no. from the stack and put it in a register
+
+
+alias sysCallNo S1;
+sysCallNo = [physicalSP-1];
+
+// Get arguments from stack and put it in registers
+
+alias arg1 S2;
+arg1 = [physicalSP-3];
+
+alias index S3;
+index = 0;
+
+alias offset S4;  //FATidx
+offset = 0;
+
+alias flag S5;
+flag = 0;
+
+
+alias counter S6;
+counter = 0;
+
+alias currentPID S7;
+currentPID = (PTBR - 1024) / 8;
+
+
+alias currentPCB S8;
+currentPCB = READY_LIST + 32 * currentPID;
+
+alias counter1 S9;
+alias counter2 S10;
+
+
+if( sysCallNo == 2) then
+
+	//open()
+
+	while(index < 64) do
+	if ( [FAT + offset] == arg1 ) then
+	flag = 1;
+	break;
+	else
+	index = index + 1;
+	offset = offset + 8;
+	endif;
+	endwhile;
+
+//print(index);
+// If it exists, return from the system call with 0, indicating success. 
+//print "hi2";
+if(flag==0) then
+[ physicalSP-2 ] = -1;
+ireturn;
+endif;
+
+offset = index;
+flag=0;
+counter = 0;
+while ( counter <  128) do	
+	if([ FILE_TABLE + counter ] == index ) then	 
+   //print ([ FILE_TABLE + counter + 0]);
+	counter1 = counter;
+	flag = 1;
+	break;
+	endif;
+	counter = counter + 2;	
+endwhile;
+
+index = counter;
+
+if( flag == 0 ) then
+counter = 0;
+while ( counter <  128) do	
+	if( [FILE_TABLE + counter + 0] == -1 ) then	 
+	//[FILE_TABLE + counter + 0] = offset;
+	//print(FILE_TABLE + counter);
+	//print " FAT index is";
+	//print ( [FILE_TABLE + counter + 0]);
+	counter1 = counter;
+	//[FILE_TABLE + counter + 1] = [FILE_TABLE + counter + 1] + 1;
+	flag = 1;
+	break;
+	endif;
+	counter = counter + 2;	
+endwhile;
+endif;
+
+//if(flag == 1) then
+//index = counter;
+//endif;
+
+if(flag == 0) then
+[ physicalSP-2 ] = -1;
+ireturn;
+endif;
+
+
+flag = 0;
+counter = 15;
+while(counter <= 29) do
+    if([currentPCB + counter] == -1) then
+          //[currentPCB + counter] = index;
+          //[currentPCB + counter + 1] = 0;
+          counter2 = counter;
+          flag = 1;
+          break;
+    else
+    counter = counter + 2;
+    endif;
+endwhile;
+
+if( flag == 0) then
+[ physicalSP-2 ] = -1;
+ireturn;
+endif;
+
+[FILE_TABLE + counter1 + 0] = offset;
+[FILE_TABLE + counter1 + 1] = [FILE_TABLE + counter1 + 1] + 1;
+
+[currentPCB + counter2 + 1] = 0;
+[currentPCB + counter2] = counter1/2;
+ //print "lseek is ";
+ //print ( [currentPCB + counter + 1]);
+[ physicalSP-2 ] = (counter2 - 15)/2;
+
+
+//print "details";
+//print ([currentPCB + counter2]);
+//print ([currentPCB + counter2 + 1]);
+//print ([FILE_TABLE + counter1 + 0]);
+//print ([FILE_TABLE + counter1 + 1]);
+//print "********";
+ireturn;
+endif;
+
+if( sysCallNo == 3) then
+  if(arg1 < 0 || arg1 > 7) then
+  [ physicalSP-2 ] = -1;
+  ireturn;
+  endif;
+  
+  if( [currentPCB + 15 + 2 * arg1]  == -1 ) then
+   [ physicalSP-2 ] = -1;
+   ireturn;
+   endif;
+   
+   index = [currentPCB + 15 + 2 * arg1];
+  
+   
+   [FILE_TABLE + 2 * index + 1] = [FILE_TABLE + 2 * index + 1] - 1;
+   
+   if([FILE_TABLE + 2 * index + 1] == 0) then
+   [FILE_TABLE + 2 * index ] = -1;
+   endif;
+   
+    [currentPCB + 15 + 2 * arg1] = -1;
+     [currentPCB + 15 + 2 * arg1 + 1] = -1;
+     [ physicalSP-2 ] = 0;
+    
+     ireturn;
+     endif;
+   

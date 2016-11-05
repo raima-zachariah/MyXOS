@@ -1,0 +1,145 @@
+alias physicalSP S0;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+alias sysCallNo S1;
+sysCallNo = [physicalSP - 1];
+
+alias PID S2;
+PID = (PTBR - 1024) / 8;
+
+alias count S5;
+
+
+if (sysCallNo == 8) then
+	//fork();
+	//find free PCB for the child
+	alias newPID S3;
+	newPID = 0;
+	while( newPID < 32 ) do
+		if ( [READY_LIST + newPID * 32 + 1] == 0 ) then //freePCB= state 0
+			break;
+		endif;
+		newPID = newPID + 1;
+	endwhile;
+
+	//when no free PCB is found
+	if ( newPID == 32 ) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+
+	//set the PID of the child process
+	[READY_LIST + newPID * 32 ] = newPID;
+	
+	//duplicating the pages used by parent process
+	alias pg_count_parent S4;
+	pg_count_parent = 0;
+	
+	//counting the num of valid pages used by the parent
+	count = 0;
+	while ( count < 4) do
+		if ([PTBR + count * 2 + 1] == "01" || [PTBR + count * 2 + 1] == "11") then
+			pg_count_parent = pg_count_parent + 1;
+		endif;
+		count = count+ 1;
+	endwhile;
+	
+
+	//check if an equal num of pages are present in MEM_LIST
+	count = 0;
+	alias free_page S6;
+	free_page = 0;
+	while( count < 64 ) do
+		if ( [MEM_LIST + count] == 0 ) then
+			free_page = free_page + 1;
+		endif;
+		if ( free_page == pg_count_parent ) then
+			break;
+		endif;
+		count = count + 1;
+	endwhile;
+	
+	//if sufficient num of pages arent found, return -1
+	if ( free_page < pg_count_parent ) then
+		[physicalSP - 2]=-1;
+		ireturn;
+	endif;
+	
+	//allocate that many number of pages for the child process
+	alias freePageIndex S6;
+	alias wordIndex S7;
+	alias PTBR_child S8;
+	PTBR_child = 1024 + newPID * 8;
+	count = 0;
+	
+
+	//for each valid page of the parent process, its contents are copied to free pages
+	while ( count < 4 ) do
+		if ( [PTBR + count * 2 + 1] == "00") then
+			[PTBR_child + count * 2 + 1] = "00";
+			count = count + 1;
+			continue;
+		endif;
+		freePageIndex = 0;
+		while ( freePageIndex < 64 ) do
+			if ( [MEM_LIST + freePageIndex] == 0 ) then
+				break;
+			endif;
+			freePageIndex = freePageIndex + 1;
+		endwhile;
+		[MEM_LIST + freePageIndex] = 1;	
+		wordIndex = 0;
+		while (wordIndex < 512 ) do
+			[freePageIndex * 512 + wordIndex] = [[PTBR + count * 2] * 512 + wordIndex ];
+			wordIndex = wordIndex + 1;
+		endwhile;	
+		[PTBR_child + count * 2] = freePageIndex;
+		[PTBR_child + count * 2 + 1] = [PTBR + count * 2 + 1];
+		count = count + 1;
+	endwhile;
+
+
+	[READY_LIST + newPID * 32 + 2] = BP; //set BP
+	[READY_LIST + newPID * 32 + 3] = SP - 1;  //set SP
+	[READY_LIST + newPID * 32 + 4] = [physicalSP]; //set IP
+
+	[READY_LIST + newPID * 32 + 5] = PTBR_child;  //set the PTBR_child
+	[READY_LIST + newPID * 32 + 6] = 4;  //set PTLR
+
+	//the current reg values are copied to PCB	
+	[READY_LIST + newPID * 32 + 7] = R0;
+	[READY_LIST + newPID * 32 + 8] = R1;
+	[READY_LIST + newPID * 32 + 9] = R2;
+	[READY_LIST + newPID * 32 + 10] = R3;
+	[READY_LIST + newPID * 32 + 11] = R4;
+	[READY_LIST + newPID * 32 + 12] = R5;
+	[READY_LIST + newPID * 32 + 13] = R6;
+	[READY_LIST + newPID * 32 + 14] = R7;
+
+
+	count = 0;
+	while ( count < 8 ) do
+		[READY_LIST + newPID * 32 + 15 + count * 2] =[READY_LIST + PID * 32 + 15 + count * 2];
+		[READY_LIST + newPID * 32 + 15 + count * 2 + 1] = [READY_LIST + PID * 32 + 15 + count * 2 + 1];
+		[FILE_TABLE + [READY_LIST + PID * 32 + 15 + count * 2] * 2 + 1] = [FILE_TABLE + [READY_LIST + PID * 32 + 15 + count * 2] * 2 + 1] + 1;        //inc FILE OPEN COUNT
+		count = count + 1;
+	endwhile;	
+	
+
+	[READY_LIST + newPID * 32 + 1] = 1; //set the state field as READY
+	[physicalSP - 2] = newPID; //return the PID of child process
+	alias childPhysicalSP S9;
+	childPhysicalSP = ([PTBR_child + 2 * ((SP - 1) / 512)] * 512) + ((SP - 1) % 512);
+	[childPhysicalSP - 1] = -2;
+	  //The value -2 is stored in the return value space of the stack of the child process.
+	ireturn;
+	
+endif;	
+			
+	
+		
+	
+	
+	
+
+	

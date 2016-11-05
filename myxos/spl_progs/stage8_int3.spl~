@@ -1,0 +1,131 @@
+// calc physicalSP using formula
+
+alias physicalSP S0;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+
+alias currentPID S14;
+currentPID = (PTBR - 1024) / 8;
+
+alias filesize S15;
+
+//calc currentPCB using formula
+
+alias currentPCB S13;
+currentPCB = READY_LIST + 32 * currentPID;
+
+
+// get sysCallNo and put into register
+
+alias sysCallNo S1;
+sysCallNo = [physicalSP-1];
+
+// Get arguments 
+alias fileDesc S2;
+fileDesc = [physicalSP-4]; // fileDescriptor
+
+alias arg2 S10;        // newLseek, wordRead
+arg2 = [physicalSP-3];
+
+alias counter S3;
+counter = 1;
+
+alias offset S4;
+offset = 0;
+
+alias flag S5;
+flag = 0;
+
+alias DFL S6;
+DFL = 6*512;
+
+alias FATidx S7;
+FATidx = 0;
+
+alias basic_block S8;
+
+alias data_block S9;
+
+alias SWOFTidx S11;
+
+alias LSEEK S12;
+
+if( sysCallNo == 6) then
+
+	//Seek();
+
+	if(fileDesc < 0 || fileDesc > 7) then  //validity check of the fileDesc
+	  	[ physicalSP-2 ] = -1;
+		ireturn;		
+	endif;
+	
+	if( [currentPCB + 15 + 2 * fileDesc]  == -1 ) then		//PPOFT == -1   			
+		[ physicalSP-2 ] = -1;
+	   	ireturn;
+        endif;
+   
+        SWOFTidx = [currentPCB + 15 + 2 * fileDesc];    //SWOFTidx
+        LSEEK = [currentPCB + 15 + 2 * fileDesc + 1];  //LSEEK
+   
+        FATidx =  [ FILE_TABLE + 2 * SWOFTidx];  //FATidx
+   
+        filesize = [ FAT + 8 * FATidx + 1 ];
+
+   
+
+        if(arg2 == 0) then
+         	[currentPCB + 15 + 2 * fileDesc + 1] = arg2;  
+    		[ physicalSP-2 ] = 0;
+   		ireturn;
+        endif;        
+    
+        if((arg2 >= 0) && (arg2  <= filesize)) then
+		[currentPCB + 15 + 2 * fileDesc + 1] = arg2;   
+		[ physicalSP-2 ] = 0;
+   		ireturn;
+   	endif;
+
+	[ physicalSP-2 ] = -1;
+endif;
+   
+if( sysCallNo == 7) then
+	if(fileDesc < 0 || fileDesc > 7) then
+  		[ physicalSP-2 ] = -1;
+  		ireturn;		
+  	endif;
+	if( [currentPCB + 15 + 2 * fileDesc]  == -1 ) then
+   		[ physicalSP-2 ] = -1;
+   		ireturn;
+   	endif;
+   
+	SWOFTidx = [currentPCB + 15 + 2 * fileDesc];   //SWOFTidx
+    	LSEEK = [currentPCB + 15 + 2 * fileDesc + 1]; //LSEEK
+
+  	FATidx =  [ FILE_TABLE + 2 * SWOFTidx]; //FATidx
+    	filesize = [ FAT + 8 * FATidx + 1 ];
+   
+   	basic_block = [ FAT + 8 * FATidx + 2 ];
+   
+  	load(1,basic_block);
+   
+   
+   	if(LSEEK == filesize) then
+    		[ physicalSP-2 ] = -1;
+   		ireturn;
+   	endif;
+   
+  	FATidx = LSEEK/512;   //index of the basic block
+ 	data_block = [ FATidx + 512];
+   
+  	store(1,basic_block);
+ 	load(1,data_block);
+ 
+ 	offset = LSEEK % 512;
+  	arg2 = [ 512 + offset ] ;
+ 
+ 	[physicalSP-3] = arg2;
+ 	[currentPCB + 15 + 2 * fileDesc + 1] = [currentPCB + 15 + 2 * fileDesc + 1] + 1;
+ 	 store(1,data_block);
+ 	 [ physicalSP-2 ] = 0;
+ 	   ireturn;
+endif;

@@ -1,0 +1,114 @@
+alias physicalSP S0;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+alias sysCallNo S1;
+sysCallNo = [physicalSP - 1];
+
+alias fileName S2;
+fileName = [physicalSP - 3];
+
+alias flag S3;
+flag = 0;
+
+alias offset S4;
+offset = 0;
+
+alias counter S5;
+counter = 0;
+
+alias DFL S6;
+DFL = 6 * 512 + 23;
+
+alias index S7;
+index = 0;
+
+alias basic_block S8;
+
+alias data_block S9;
+
+if ( sysCallNo == 2) then
+	
+	while(counter <= 64) do
+		if ( [FAT + offset ] == fileName ) then
+			//flag = 1;
+			break;
+		else 
+			counter = counter + 1;
+			offset = offset + 8;
+		endif;
+	endwhile;
+	
+	if (flag == 0) then
+		[ physicalSP - 2] = -1;
+		ireturn;
+	endif;
+
+	counter = 0;
+	if ( flag == 0 ) then 
+		while ( counter < 424 ) do
+			if ( [DFL] == 0) then 
+				flag =1;
+				break;
+			else
+				DFL = DFL + 1;
+				counter = counter + 1;
+			endif;
+		endwhile;
+	endif;
+
+	if ( flag == 0 ) then
+		[ physicalSP - 2] = -1;
+		ireturn;
+	endif;
+
+	if ( flag == 1) then
+		offset = 2;
+		while ( counter <= 64 ) do
+			if ( [FAT + offset] == -1 ) then 
+				flag = 0;
+				break;
+			else
+				counter = counter + 1;
+				offset = offset + 8;
+			endif;
+		endwhile;
+	endif;
+
+	if ( flag == 1 ) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+
+[FAT + offset-2]=fileName;
+[FAT + offset-1]=0;
+[FAT + offset]= DFL - 3072;
+
+load(1,DFL-3072);
+
+counter = 512;
+while ( counter <= 767 ) do
+	[ counter ] = -1;
+	counter = counter + 1;
+endwhile;
+
+store ( 1, DFL - 3072);
+[DFL] = 1;
+
+store(5,19);
+store(6,20);
+
+[physicalSP - 2]=0;
+ireturn;
+
+endif;
+
+			
+
+
+
+
+
+
+
+		
+

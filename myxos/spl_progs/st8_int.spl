@@ -1,0 +1,69 @@
+alias physicalSP S0;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+alias sysCallNo S1;
+alias filename S2;
+sysCallNo = [physicalSP - 1];
+filename = [physicalSP-3];
+alias free S3;
+alias i S4;
+alias value S5;
+alias index S6;
+alias flag S7;
+//alias freeblock S6;
+if (sysCallNo == 2) then
+i = 0;
+while (i <= 511) do
+if ([FAT + i] == filename) then
+value = i / 8;
+break;
+endif;
+i = i + 8;
+endwhile;
+if (i > 511) then
+[physicalSP-2] = -1;
+ireturn;
+endif;
+i = 0;
+flag = 0;
+index = -1;
+while ( i < 128) do // 64 entries, each of size 2 words
+if ([FILE_TABLE + i] == value) then // Set FAT Index to -1
+index = i/2; // Set File Open Count to 0
+break;
+endif;
+i = i + 2; // Move to next entry
+endwhile;
+if (index == -1) then
+while ( i < 128) do // 64 entries, each of size 2 words
+if ([FILE_TABLE + i] == value) then // Set FAT Index to -1
+index = i/2; // Set File Open Count to 0
+break;
+endif;
+i = i + 2; // Move to next entry
+endwhile;
+endif;
+if (index == -1) then
+[physicalSP-2] = -1;
+ireturn;
+endif;
+alias currentPID S8;
+currentPID = (PTBR - 1024) / 8;
+alias currentPCB S9;
+currentPCB = READY_LIST + 32 * currentPID;
+i = 0;
+while (i < 15) do
+if ([currentPCB + 15 + i] == -1) then
+[currentPCB + 15 + i] = index;
+[currentPCB + 15 + i + 1] = 0;
+endif;
+i = i + 2;
+endwhile;
+if (i > 14) then
+[physicalSP-2] = -1;
+ireturn;
+endif;
+[FILE_TABLE + 2 * index] = value;
+[FILE_TABLE + (2 * index) + 1] = [FILE_TABLE + (2 * index) + 1] + 1;
+[physicalSP-2] = i;
+ireturn;
+endif;
